@@ -48,7 +48,7 @@
 
     .card { 
       background: #ffffff; 
-      max-width: 900px; 
+      max-width: 950px; 
       margin: 0 auto; 
       padding: 36px; 
       border-radius: var(--radius-lg); 
@@ -181,6 +181,25 @@
       background-color: var(--slate-50);
     }
 
+    /* ตกแต่งเงา KTBCODE ในตาราง */
+    .ktb-shadow-tag {
+      display: inline-block;
+      white-space: nowrap;
+      font-size: 13px;
+      color: var(--slate-400);
+      font-weight: 600;
+      background-color: var(--slate-100);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--slate-200);
+    }
+
+    .code-cell-flex {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .btn { 
       padding: 10px 18px; 
       border: none; 
@@ -276,7 +295,7 @@
   <div class="badge-info">
     <strong>📌 ขั้นตอนการใช้งาน:</strong>
     <ol>
-      <li>Import ไฟล์ Master (Map_port) หากต้องการอัปเดตข้อมูล Group & Code</li>
+      <li>Import ไฟล์ Master (Map_port) เพื่ออัปเดตข้อมูล Group, ClientCode และ KTBCODE จริงจากระบบ</li>
       <li>เลือก Group แล้วกด <strong>+ เพิ่มรายการ</strong> เพื่อคีย์ข้อมูลกองทุน</li>
       <li>เมื่อคีย์เสร็จแล้วกด <strong>Submit บันทึกข้อมูล Group นี้</strong> (ระบบมี Auto-Save ป้องกันข้อมูลหาย)</li>
     </ol>
@@ -309,10 +328,10 @@
     <table>
       <thead>
         <tr>
-          <th style="width: 8%; text-align: center;">ลำดับ</th>
-          <th style="width: 37%;">Code กองทุน (ClientCode)</th>
-          <th style="width: 25%;">Amount</th>
-          <th style="width: 20%;">CodeAC</th>
+          <th style="width: 6%; text-align: center;">ลำดับ</th>
+          <th style="width: 44%;">Code กองทุน (CLIENTCODE & KTBCODE)</th>
+          <th style="width: 22%;">Amount</th>
+          <th style="width: 18%;">CodeAC</th>
           <th style="width: 10%; text-align: center;">จัดการ</th>
         </tr>
       </thead>
@@ -373,10 +392,8 @@
 </div>
 
 <script>
-  let fundMapping = {
-    "KCEN": ["KCEN1", "KCEN2", "KCEN3", "KCEN4"],
-    "KTSM": ["KTSM1", "KTSM2", "KTSM3"]
-  };
+  // ตั้งค่าข้อมูลเริ่มต้นเป็นว่างเปล่าเพื่อรอรับข้อมูลจริงจากไฟล์ Import
+  let fundMapping = {};
 
   let keyedDataStore = {};
   let currentGroup = "";
@@ -437,12 +454,18 @@
 
       let newMapping = {};
       jsonData.forEach(row => {
-        let group = String(row["PortfolioGorup"] || row["PORTFOLIOGORUP"] || row["PortfolioGroup"] || "").trim();
-        let code = String(row["ClientCode"] || row["CLIENTCODE"] || "").trim();
+        // ค้นหาคอลัมน์ชื่อ Group, ClientCode และ KTBCode จากชื่อที่เป็นไปได้ในไฟล์ Excel
+        let group = String(row["PortfolioGorup"] || row["PORTFOLIOGORUP"] || row["PortfolioGroup"] || row["PORTFOLIOGROUP"] || "").trim();
+        let code = String(row["ClientCode"] || row["CLIENTCODE"] || row["Client Code"] || "").trim();
+        let ktbCode = String(row["KTBCODE"] || row["KTB_CODE"] || row["KTB CODE"] || row["KtbCode"] || row["ktbcode"] || "").trim();
 
         if (group && code) {
           if (!newMapping[group]) newMapping[group] = [];
-          if (!newMapping[group].includes(code)) newMapping[group].push(code);
+          
+          const exists = newMapping[group].some(item => item.code === code);
+          if (!exists) {
+            newMapping[group].push({ code: code, ktbCode: ktbCode });
+          }
         }
       });
 
@@ -451,9 +474,9 @@
         localStorage.setItem('fundMappingMaster', JSON.stringify(fundMapping));
         renderGroupDropdown();
         onGroupChange();
-        document.getElementById('importStatus').innerText = "✓ Import สำเร็จ!";
+        document.getElementById('importStatus').innerText = "✓ Import ข้อมูล Master สำเร็จ!";
       } else {
-        alert("ไม่พบข้อมูล PortfolioGorup หรือ ClientCode ในไฟล์");
+        alert("ไม่พบข้อมูล PortfolioGroup, ClientCode หรือ KTBCODE ในไฟล์ Excel");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -462,7 +485,11 @@
   function renderGroupDropdown() {
     const groupSelect = document.getElementById('groupCode');
     const groups = Object.keys(fundMapping);
-    groupSelect.innerHTML = groups.map(g => `<option value="${g}">${g}</option>`).join('');
+    if (groups.length === 0) {
+      groupSelect.innerHTML = `<option value="">-- กรุณา Import ไฟล์ Master --</option>`;
+    } else {
+      groupSelect.innerHTML = groups.map(g => `<option value="${g}">${g}</option>`).join('');
+    }
   }
 
   function getAvailableCodes() {
@@ -470,13 +497,17 @@
   }
 
   function autoSaveToStorage() {
+    if (!currentGroup) return;
     const rows = document.querySelectorAll('#tableBody tr');
     let list = [];
     rows.forEach(row => {
-      const code = row.querySelector('.code-input').value;
-      const amount = row.querySelector('.amount-input').value;
-      const codeAC = row.querySelector('.codeac-input').value;
-      if (code) list.push({ code, amount, codeAC });
+      const codeInput = row.querySelector('.code-input');
+      if (codeInput) {
+        const code = codeInput.value;
+        const amount = row.querySelector('.amount-input').value;
+        const codeAC = row.querySelector('.codeac-input').value;
+        if (code) list.push({ code, amount, codeAC });
+      }
     });
 
     keyedDataStore[currentGroup] = list;
@@ -526,22 +557,44 @@
     }
   }
 
+  function updateKtbTag(selectEl) {
+    const selectedOption = selectEl.options[selectEl.selectedIndex];
+    if (!selectedOption) return;
+    
+    const ktbCode = selectedOption.getAttribute('data-ktb') || '';
+    const tagEl = selectEl.closest('.code-cell-flex').querySelector('.ktb-shadow-tag');
+    if (tagEl) {
+      tagEl.innerText = ktbCode;
+      tagEl.style.display = ktbCode ? 'inline-block' : 'none';
+    }
+  }
+
   function addRow(selectedCode = '', amount = '', codeAC = 'OLCONT') {
+    if (!currentGroup) {
+      alert("กรุณา Import ไฟล์ Master (Map_port) และเลือก Group ก่อนครับ");
+      return;
+    }
+
     const tbody = document.getElementById('tableBody');
     const rowCount = tbody.children.length + 1;
     const tr = document.createElement('tr');
-    const codes = getAvailableCodes();
+    const items = getAvailableCodes();
 
-    let optionsHTML = codes.map(code => 
-      `<option value="${code}" ${code === selectedCode ? 'selected' : ''}>${code}</option>`
-    ).join('');
+    let optionsHTML = items.map(item => {
+      const isSelected = item.code === selectedCode ? 'selected' : '';
+      const ktbLabel = item.ktbCode ? ` (${item.ktbCode})` : '';
+      return `<option value="${item.code}" data-ktb="${item.ktbCode || ''}" ${isSelected}>${item.code}${ktbLabel}</option>`;
+    }).join('');
     
     tr.innerHTML = `
       <td class="row-num" style="text-align:center; font-weight:600; color:var(--slate-600);">${rowCount}</td>
       <td>
-        <select class="code-input" onchange="markUnsubmitted()">
-          ${optionsHTML}
-        </select>
+        <div class="code-cell-flex">
+          <select class="code-input" onchange="updateKtbTag(this); markUnsubmitted();">
+            ${optionsHTML}
+          </select>
+          <span class="ktb-shadow-tag"></span>
+        </div>
       </td>
       <td><input type="number" class="amount-input" placeholder="0" value="${amount}" oninput="markUnsubmitted()"></td>
       <td>
@@ -559,6 +612,11 @@
       </td>
     `;
     tbody.appendChild(tr);
+
+    // แสดงผล Shadow Tag ทันทีตามตัวเลือก
+    const newSelect = tr.querySelector('.code-input');
+    if (newSelect) updateKtbTag(newSelect);
+
     reIndex();
     markUnsubmitted();
   }
