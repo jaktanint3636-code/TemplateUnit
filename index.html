@@ -547,6 +547,38 @@
   let currentGroup = "";
   let isCurrentSubmitted = true;
 
+  function formatNumberWithCommas(val) {
+    if (val === null || val === undefined || val === '') return '';
+    let str = String(val).replace(/,/g, '');
+    let parts = str.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+  }
+
+  function formatAmountInput(input) {
+    let cursorPosition = input.selectionStart;
+    let originalLength = input.value.length;
+    
+    // กรองเอาเฉพาะตัวเลขและจุดทศนิยม
+    let rawValue = input.value.replace(/[^0-9.]/g, '');
+    
+    // ป้องกันการพิมพ์จุดทศนิยมซ้ำ
+    let parts = rawValue.split('.');
+    if (parts.length > 2) {
+      rawValue = parts[0] + '.' + parts.slice(1).join('');
+    }
+    
+    let formatted = formatNumberWithCommas(rawValue);
+    input.value = formatted;
+    
+    // จัดการตำแหน่ง Cursor ให้พิมพ์ได้ต่อเนื่องไม่กระตุก
+    let newLength = formatted.length;
+    cursorPosition = cursorPosition + (newLength - originalLength);
+    input.setSelectionRange(cursorPosition, cursorPosition);
+
+    markUnsubmitted();
+  }
+
   window.onload = function() {
     const savedMaster = localStorage.getItem('fundMappingMaster');
     if (savedMaster) {
@@ -717,7 +749,7 @@
       const codeInput = row.querySelector('.code-input');
       if (codeInput) {
         const code = codeInput.value;
-        const amount = row.querySelector('.amount-input').value;
+        const amount = row.querySelector('.amount-input').value.replace(/,/g, '');
         const codeAC = row.querySelector('.codeac-input').value;
         if (code) list.push({ code, amount, codeAC });
       }
@@ -780,6 +812,8 @@
       return `<option value="${item.code}" data-ktb="${item.ktbCode || ''}" ${isSelected}>${item.code}${ktbLabel}</option>`;
     }).join('');
     
+    const formattedAmount = formatNumberWithCommas(amount);
+
     tr.innerHTML = `
       <td class="row-num" style="text-align:center; font-weight:600; color:var(--slate-500);">${rowCount}</td>
       <td>
@@ -790,7 +824,7 @@
           <span class="ktb-shadow-tag"></span>
         </div>
       </td>
-      <td><input type="number" class="amount-input" placeholder="0" value="${amount}" oninput="markUnsubmitted()"></td>
+      <td><input type="text" class="amount-input" placeholder="0" value="${formattedAmount}" oninput="formatAmountInput(this)"></td>
       <td>
         <select class="codeac-input" onchange="markUnsubmitted()">
           <option value="OLCONT" ${codeAC === 'OLCONT' ? 'selected' : ''}>OLCONT</option>
@@ -893,7 +927,7 @@
       html += `<tr>
         <td>${data[i][0]}</td>
         <td>${data[i][1]}</td>
-        <td>${data[i][2]}</td>
+        <td>${formatNumberWithCommas(data[i][2])}</td>
         <td>${data[i][3]}</td>
       </tr>`;
     }
